@@ -1,220 +1,385 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Debris = game:GetService("Debris")
-local SoundService = game:GetService("SoundService")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-
-local Assets = ReplicatedStorage:WaitForChild("Assets")
-local Events = ReplicatedStorage:WaitForChild("Events")
-
-local Signal = require(Assets.Modules.Signal)
-local Spring = require(Assets.Modules.Spring)
-local Spring2 = require(Assets.Modules.Spring2)
-local Network = require(Assets.Modules.Network)
-local Raycast = require(Assets.Modules.Raycast)
-Raycast.VisualizeCasts = false
-
-local mouseMovement = Spring2.new(Vector3.new())
-mouseMovement.Speed = 15
-mouseMovement.Damper = 0.65
-
-local desiredXOffset, desiredYOffset = 0, 0
-
-local maxCameraOffset = 2.5
-local swayMultiplier = 3.5
-
-local function loadAnim(animator, id)
-	if (id ~= 0 and id ~= nil) then
-		local track = Instance.new("Animation")
-		track.AnimationId = "rbxassetid://" .. id
-		return animator:LoadAnimation(track)
-	end
+return function(script)
+	local character = script.Parent
+	local humanoid = character:WaitForChild("Humanoid")
 	
-	return nil
-end
+	local clone = character:Clone()
+	
+	local RunService = game:GetService("RunService")
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ServerStorage = game:GetService("ServerStorage")
+	local ChatService = game:GetService("Chat")
+	local Players = game:GetService("Players")
+	local PhysicsService = game:GetService("PhysicsService")
+	
+	local Assets = ReplicatedStorage:WaitForChild("Assets")
+	local ServerAssets = ServerStorage:WaitForChild("Assets")
+	local Events = ReplicatedStorage:WaitForChild("Events")
+	
+	local network = require(Assets.Modules.Network)
+	local raycast = require(Assets.Modules.Raycast)
+	local ragdoll = require(ServerAssets.Framework.Ragdoll)
+	local combat = require(Assets.Framework.Combat)
+	
+	local simplePath = require(script["__path"])
+	local path = simplePath.new(character)
 
-local function IsInFirstPerson()
-	local camera = workspace.CurrentCamera
+	local goal = nil
 
-	if camera then
-		if camera.CameraType.Name == "Scriptable" then
+	local wanderTargetRadius = 100;
+	local wanderRadius = 50;
+	
+	local respawnTime = 20;
+	
+	local minMeleeRadius = 2.5;
+	
+	local meleeActiveRadius = 20;
+	local gunActiveRadius = 120;
+
+	local wanderTargetDetectDistance = 10000;
+	local minDetectDistance = 5;
+	local maxDetectDistance = 1000;
+	local abortChasingDistance = 100;
+	
+	local sideMoveDelayTime = {1, 10};
+	local sideMoveLength = 7;
+
+	local stuckTime = 0.25;
+
+	local wanderDelayTime = {0, 5};
+	
+	local lookDirectionMaxDistance = 1000;
+	local lookRoughness = 50;
+	local lookAngleInterval = 10;
+	local minLookDistance = 15;
+	
+	local attackDelay = 0.75;
+	local attackDamage = 15;
+
+	local losingSightMax = 50;
+	local characterFieldOfView = 165;
+	
+	local aiSettings = script:WaitForChild("settings")
+	local playersHostile = aiSettings.playerHostile.Value;
+	local VoiceLineType = aiSettings.voiceLine.Value;
+	local teamName = aiSettings.teamName.Value;
+	local aiActive = aiSettings.active.Value;
+	local chatBubble = false;
+	local voiceline = true;
+	--aiActive = false
+	
+	local jumpOnDamageTaken = true;
+	local avoidDamageJumpAmount = {3, 5};
+	local avoidDamageRandomPositionRadius = 15;
+	local avoidDamageLength = {2, 10};
+	local avoidDamageAmount = {3, 5};
+	
+	local debugging = false;
+	
+	local chatlineModule = Assets.Modules.chatline:FindFirstChild(teamName)
+	if (not chatlineModule) then
+		chatlineModule = Assets.Modules.chatline.Default
+	end
+	local chatline = require(chatlineModule)
+	
+	local doNotKillSCPs = {
+		"173"
+	}
+	
+	local callBackupOnSCPs = {
+		"173"
+	}
+	
+	local chargeSCPs = {
+		"173"
+	}
+	
+	local hideDelay = 0
+	local hurtDelay = 0
+	local spottedDelay = math.random(5, 10)
+
+	local globalRate = 1 / 15;
+
+	local ignoreTable = {character}
+
+	local chasing = false
+	local backupRequested = false
+	local backupping = false
+	
+	local defaultspeed = 16
+	local runspeed = 30
+	
+	local speed = defaultspeed
+	
+	local defaultFOV = characterFieldOfView
+	
+	local lastTargetName = ""
+	local seenEnemy = false
+	local isLastTargetSCP = false
+	
+	local entityVoicePitch = math.random(10, 15) / 100
+	
+	local guid = game.HttpService:GenerateGUID(false)
+	
+	local backpack = Instance.new("Folder")
+	backpack.Name = "Backpack"
+	backpack.Parent = character
+
+	local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+	a0.Parent, a1.Parent = workspace.Terrain, workspace.Terrain
+	local beam = script.Beam
+	beam.Attachment0 = a0
+	beam.Attachment1 = a1
+	
+	local teamValue = Instance.new("StringValue")
+	teamValue.Name = "CharacterTeam"
+	teamValue.Value = teamName
+	teamValue.Parent = character
+	
+	if (humanoid.RootPart:CanSetNetworkOwnership()) then
+		humanoid.RootPart:SetNetworkOwner(nil)
+	end
+	path.Visualize = debugging
+	beam.Enabled = debugging
+	
+	local settings = ServerAssets.Settings:Clone()
+	settings.Parent = humanoid
+	local settingsObject = Instance.new("ObjectValue")
+	settingsObject.Name = "settingsObject"
+	settingsObject.Value = settings
+	settingsObject.Parent = humanoid
+	ragdoll:Init(settings, character, true)
+	
+	for _,corescript in pairs(script:GetChildren()) do
+		if (corescript:IsA("Script")) then
+			corescript.Parent = character
+			corescript.Disabled = false
+		end
+	end
+
+	local function getDistance(p1, p2)
+		if (p1 == nil or p2 == nil) then
+			return 0
+		end
+		
+		return ((typeof(p1) == "Instance" and p1.Position or p1) - (typeof(p2) == "Instance" and p2.Position or p2)).magnitude
+	end
+
+	local function angleBetween(vectorA, vectorB)
+		return math.acos(math.clamp(vectorA:Dot(vectorB), -1, 1))
+	end
+
+	local function inFieldOfView(model, fov)
+		if (not character:FindFirstChild("Head")) then
 			return false
 		end
-
-		local focus = camera.Focus.Position
-		local origin = camera.CFrame.Position
-
-		return (focus - origin).Magnitude <= 1
-	end
-
-	return false
-end
-
-local function lerp(a, b, t)
-	return a + (b - a) * t
-end
-
-local limbs = {
-	"Head",
-	"Left Arm",
-	"Right Arm",
-	"Left Leg",
-	"Right Leg",
-	"HumanoidRootPart",
-}
-
-return function(tool, script)
-	local gunSettings, gunModel
-	local settingsSignal = Signal.new()
-	tool["__listener"].OnClientEvent:Connect(function(module, model)
-		gunSettings = require(module)
-		gunModel = model
-		task.wait(1 / 30)
-		settingsSignal:Fire()
-	end)
-	
-	-- // wait for settings data
-	settingsSignal:Wait()
-	
-	local player = game.Players.LocalPlayer
-	if (not player) then
-		tool:Destroy()
-	end
-	local mouse = player:GetMouse()
-	repeat task.wait() until typeof(player.Character) == "Instance"
-	local character = player.Character
-	local humanoid = character:WaitForChild("Humanoid")
-	if (character:FindFirstChild(tool)) then
-		humanoid:UnequipTools()
-	end
-	
-	local settings = player:WaitForChild("Settings")
-	
-	local anims = {}
-	for index,id in pairs(gunSettings.anims) do
-		anims[index] = loadAnim(humanoid, id)
-	end
-	
-	local clipCurrent = gunSettings.ammo.infAmmo and math.huge or gunSettings.ammo.clipSize
-	local clipSize = gunSettings.ammo.infAmmo and math.huge or gunSettings.ammo.clipSize
-	local maxAmmo = gunSettings.ammo.maxAmmo
-	
-	local reloading = false
-	local equipped = false
-	local active = false
-	local firing = false
-	local altReload = false
-	local aiming = false
-	local switching = false
-	local scoping = false
-	local reloadCancelled = false
-	local fired = false
-	
-	local equipTime = 0
-	local fireDelay = 0
-	local deltaTime = 0
-	local modeSwitch = 1
-	local defaultMouseDeltaSens = UserInputService.MouseDeltaSensitivity
-	
-	local fireMode = gunSettings.ammo.mode
-	
-	local defaultspeed = humanoid.WalkSpeed
-	
-	local recoil = Spring.spring.new(Vector3.new())
-	recoil.d = gunSettings.fire.recoil.damper
-	recoil.s = gunSettings.fire.recoil.speed
-	
-	local corePart = gunModel[gunSettings.corePart]
-	local corePartString = Instance.new("StringValue")
-	corePartString.Name = "corePart"
-	corePartString.Value = gunSettings.corePart
-	corePartString.Parent = gunModel
-	
-	local compressor = Instance.new("CompressorSoundEffect")
-	compressor.Attack = 0.5
-	compressor.GainMakeup = 0
-	compressor.Ratio = 1
-	compressor.Release = 0.8
-	compressor.Threshold = -50
-	compressor.Name = " "
-	compressor.Parent = script
-	
-	local gunUI = Assets.Misc.gunUI:Clone()
-	gunUI.Name = tool.Name
-	gunUI.Parent = script
-	local progressFrame = gunUI.Crosshair.Main.b.under.progress
-	progressFrame.Position = UDim2.new(0.5, 0, -0.5, 0)
-	local gunDataFrame = gunUI.Data
-	gunDataFrame.Position = UDim2.new(1, 0, 0.883, 0)
-	
-	local gyro = nil
-	
-	local connections = {}
-	local visibleParts = {}
-	
-	local firemodeTable = {
-		"[ SEMI ]",
-		"[ BURST ]",
-		"[ AUTO ]"
-	}
-	
-	local function shallowCopy(original)
-		local copy = {}
-		for key, value in pairs(original) do
-			copy[key] = value
-		end
-		return copy
-	end
-	
-	local crosshairs = {
-		t = UDim2.new(0, 0, 0, -gunSettings.crosshair.idle +- 7),
-		l = UDim2.new(0, -gunSettings.crosshair.idle +- 7, 0, 0),
-		r = UDim2.new(0, gunSettings.crosshair.idle, 0, 0),
-		b = UDim2.new(0, 0, 0, gunSettings.crosshair.idle),
-	}
-	local defaultCrosshair = shallowCopy(crosshairs)
-	
-	local function shoveCrosshairs(number)
-		gunUI.Crosshair.Main.t.Position = UDim2.new(0, 0, 0, -gunSettings.crosshair.idle - 7 - number)
-		gunUI.Crosshair.Main.l.Position = UDim2.new(0, -gunSettings.crosshair.idle - 7 - number, 0, 0)
-		gunUI.Crosshair.Main.r.Position = UDim2.new(0, gunSettings.crosshair.idle + number, 0, 0)
-		gunUI.Crosshair.Main.b.Position = UDim2.new(0, 0, 0, gunSettings.crosshair.idle + number)
 		
-		for index,position in pairs(crosshairs) do
-			TweenService:Create(gunUI.Crosshair.Main[index], TweenInfo.new(gunSettings.crosshair.lerp, gunSettings.crosshair.easingStyle, gunSettings.crosshair.easingDirection), {Position = position}):Play()
+		local lookForward = character.Head.CFrame.LookVector
+		local lookToPoint = ((typeof(model) == "Instance" and model.PrimaryPart.Position or model) - character.Head.Position).unit
+
+		local angle = angleBetween(lookForward, lookToPoint)
+		return math.abs(angle) <= math.rad(fov) / 2
+	end
+
+	local function canSee(model)
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = ignoreTable
+		params.IgnoreWater = true
+
+		local cast = workspace:Raycast(character.Head.Position, (model.PrimaryPart.Position - character.Head.Position).unit * 10000, params)
+		if (cast) then
+			if (cast.Instance.Transparency >= 0.5) then
+				ignoreTable[#ignoreTable + 1] = cast.Instance
+				return canSee(model)
+			elseif (cast.Instance:IsDescendantOf(model)) then
+				return true
+			end
+		elseif (not cast) then
+			return true
 		end
+
+		return false
 	end
 	
-	local function setCrosshairs(number, animate, lerp, easingStyle, easingDirection)
-		crosshairs.t = UDim2.new(0, 0, 0, -number - 7)
-		crosshairs.l = UDim2.new(0, -number - 7, 0, 0)
-		crosshairs.r = UDim2.new(0, number, 0, 0)
-		crosshairs.b = UDim2.new(0, 0, 0, number)
-		
-		for index,position in pairs(crosshairs) do
-			if (animate) then
-				TweenService:Create(gunUI.Crosshair.Main[index], TweenInfo.new(lerp or gunSettings.crosshair.lerp, easingStyle or gunSettings.crosshair.easingStyle, easingDirection or gunSettings.crosshair.easingDirection), {Position = position}):Play()
-			else
-				gunUI.Crosshair.Main[index].Position = position
+	local function stringMatchInTable(string, table)
+		for _,k in pairs(table) do
+			if (k == string) then
+				return true
 			end
 		end
+		
+		return false
+	end
+	
+	local function sortPositionTable(t, ascend)
+		for k = 1, #t do
+			if (ascend) then
+				if (k > 1 and t[k].magnitude > t[k - 1].magnitude) then
+					local l = t[k - 1]
+					t[k - 1] = t[k]
+					t[k] = l
+					return sortPositionTable(t, ascend)
+				end
+			else
+				if (k > 1 and t[k].magnitude < t[k - 1].magnitude) then
+					local l = t[k - 1]
+					t[k - 1] = t[k]
+					t[k] = l
+					return sortPositionTable(t, ascend)
+				end
+			end
+		end
+
+		return t
 	end
 	
 	local function randomChildren(parent)
+		if (#parent:GetChildren() < 1) then
+			return false
+		end
 		return parent:GetChildren()[math.random(1, #parent:GetChildren())]
 	end
-	
-	local function getDistance(p1, p2)
-		return ((typeof(p1) == "Instance" and p1.Position or p1) - (typeof(p2) == "Instance" and p2.Position or p2)).magnitude
+
+	local function isTargetTeam(targetCharacter)
+		local team = targetCharacter:FindFirstChild("CharacterTeam")
+		if (team and string.lower(team.Value) == string.lower(teamValue.Value)) then
+			return true
+		elseif (team == "Noob" and team.Value == "Phoenix" or team == "Phoenix" and team.Value == "Noob") then
+			return true
+		elseif (team == "Bulldozer" and team.Value == "MTF" or team == "MTF" and team.Value == "Bulldozer") then
+			return true
+		end
+
+		return false
 	end
 	
-	local function isPartThin(part, increment)
-		increment = increment or 0.75
-		return part.Size.x <= increment or part.Size.y <= increment or part.Size.z <= increment
+	local function getHumanoid(part)
+		local foundhumanoid = part:FindFirstChildWhichIsA("Humanoid") or part.Parent:FindFirstChildWhichIsA("Humanoid")
+		if (part.Parent ~= workspace and foundhumanoid) then
+			return foundhumanoid
+		end
+
+		if (part.Parent ~= workspace) then
+			return getHumanoid(part.Parent)
+		end
+
+		return nil
 	end
 	
-	local function playSound(sound, parent, pitch, volume, silencer)
+
+	local function attackPlayers(model)
+		local isPlayer = Players:GetPlayerFromCharacter(model)
+		if (not isPlayer or (isPlayer and playersHostile)) then
+			return true
+		end
+		return false
+	end
+	
+	local function isTargetSCP(targetCharacter)
+		local isSCP = targetCharacter:FindFirstChild("isSCP")
+		if (isSCP) then
+			return isSCP.Value
+		end
+
+		return false
+	end
+	
+	local function attackTeamMate(t)
+		local isNPC = t:FindFirstChild("CharacterTeam")
+		if (not isNPC or (isNPC and not playersHostile)) then
+			return false
+		end
+		
+		return true
+	end
+	
+	local function findHumanoid(parent)
+		local maxDistance, foundCharacter = maxDetectDistance, nil
+		for _,targetCharacter in pairs(parent:GetChildren()) do
+			local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+			local distance = targetHumanoid and targetHumanoid.RootPart and getDistance(targetHumanoid.RootPart, humanoid.RootPart)
+			if (targetHumanoid and attackPlayers(targetCharacter) and not targetCharacter:FindFirstChild("__ignore") and distance and distance < maxDistance and targetHumanoid.RootPart.Anchored == false and targetHumanoid.Health > 0 and targetHumanoid ~= humanoid and (inFieldOfView(targetCharacter, characterFieldOfView) and canSee(targetCharacter) and not isTargetTeam(targetCharacter) or (distance <= minDetectDistance and not isTargetTeam(targetCharacter)))) then
+					maxDistance = distance
+					foundCharacter = targetCharacter
+				end
+			end
+
+
+		return foundCharacter
+	end
+	
+	local function findTeammate(parent)
+		local maxDistance, foundCharacter = maxDetectDistance, nil
+		for _,targetCharacter in pairs(parent:GetChildren()) do
+			local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+			local distance = targetHumanoid and targetHumanoid.RootPart and getDistance(targetHumanoid.RootPart, humanoid.RootPart)
+			if (targetHumanoid and not targetCharacter:FindFirstChild("__ignore") and distance and distance < maxDistance and targetHumanoid.RootPart.Anchored == false and targetHumanoid.Health > 0 and targetHumanoid ~= humanoid and (canSee(targetCharacter) and isTargetTeam(targetCharacter) or (distance <= minDetectDistance and isTargetTeam(targetCharacter)))) then
+				maxDistance = distance
+				foundCharacter = targetCharacter
+			end
+		end
+
+		return foundCharacter
+	end
+
+	local function findWanderHumanoid(parent, distance)
+		local maxDistance, foundCharacter = maxDetectDistance, nil
+		for _,targetCharacter in pairs(parent:GetChildren()) do
+			local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
+			local distance = targetHumanoid and targetHumanoid.RootPart and getDistance(targetHumanoid.RootPart, humanoid.RootPart)
+			if (targetHumanoid and attackPlayers(targetCharacter) and distance and distance < maxDistance and targetHumanoid.RootPart.Anchored == false and targetHumanoid.Health > 0 and targetHumanoid ~= humanoid and not isTargetTeam(targetCharacter)) then
+				maxDistance = distance
+				foundCharacter = targetCharacter
+			end
+		end
+
+		return foundCharacter
+	end
+
+	local function clampDistanceBetweenVectors(v1, v2, max)
+		return v1 + ((v2 - v1).Unit * math.min((v2 - v1).Magnitude,  max))
+	end
+	
+	local function getDirection(p1, p2, distance)
+		return (p2 - p1).unit * (distance or 1)
+	end
+	
+	local function findLookDirection()
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {character, workspace.Terrain.Ignore}
+		params.IgnoreWater = true
+		
+		local direction = nil
+		local h, k = humanoid.RootPart.Position.x, humanoid.RootPart.Position.z
+		local radius = 1.5
+		local distances = {}
+		for i = 1, 360, lookAngleInterval do
+			raycast.VisualizeCasts = false
+			local x, z = h + radius * math.cos(math.rad(i)), k + radius * math.sin(math.rad(i))
+			local origin = Vector3.new(x, humanoid.RootPart.Position.y + 1.5, z)
+			local direction = getDirection(humanoid.RootPart.Position, origin)
+			
+			local cast = workspace:Raycast(origin, direction * lookDirectionMaxDistance, params)
+			if (cast and inFieldOfView(origin, characterFieldOfView)) then
+				distances[#distances + 1] = cast.Position
+			end
+		end
+		local minDistance, indexDistance = 0, nil
+		for index,position in pairs(distances) do
+			local distance = getDistance(humanoid.RootPart.Position, position)
+			if (distance > minDistance) then
+				minDistance = distance
+				indexDistance = index
+			end
+		end
+		if (indexDistance) then
+			--direction = distances[indexDistance]
+			direction = sortPositionTable(distances)
+		end
+		
+		return direction
+	end
+	
+	local function playSound(sound, parent, pitch, volume)
 		local destroyParent = false
 		if (typeof(parent) == "Vector3") then
 			local pos = parent
@@ -223,813 +388,677 @@ return function(tool, script)
 			parent.Parent = workspace.Terrain
 			destroyParent = true
 		end
-		
-		local distance = parent:IsDescendantOf(workspace) and getDistance(workspace.CurrentCamera.CFrame.Position, parent:IsA("Attachment") and parent.WorldPosition or parent.Position) or nil
+
 		local newsound = sound:Clone()
 		newsound.PlaybackSpeed = pitch and newsound.PlaybackSpeed + math.random() * pitch or newsound.PlaybackSpeed
 		newsound.Volume = volume or newsound.Volume
-		newsound.SoundGroup = SoundService.Main
+		newsound.SoundGroup = game.SoundService.Main
 		newsound.Parent = parent
-		if (silencer) then
-			local newcompressor = compressor:Clone()
-			newcompressor.Parent = newsound
-		end
-		newsound.PlaybackSpeed = silencer and newsound.PlaybackSpeed + 0.5 or newsound.PlaybackSpeed
-		if (distance) then
-			local equalizer = Instance.new("EqualizerSoundEffect")
-			equalizer.HighGain = -(distance / 10)
-			equalizer.MidGain = -(distance / 20)
-			equalizer.LowGain = -(distance / 40)
-			equalizer.Parent = newsound
-		end
 		task.delay(newsound.TimeLength + 0.5, function()
 			newsound:Destroy()
 			if (destroyParent) then
 				parent:Destroy()
 			end
 		end)
-		
+
 		return newsound
 	end
-	
-	local function playNormalSound(sound, parent, pitch, volume, dontDestroy)
-		local destroyParent = false
-		if (typeof(parent) == "Vector3") then
-			local pos = parent
-			parent = Instance.new("Attachment")
-			parent.WorldPosition = pos
-			parent.Parent = workspace.Terrain
-			destroyParent = true
-		end
 
-		local newsound = sound:Clone()
-		newsound.PlaybackSpeed = pitch or newsound.PlaybackSpeed
-		newsound.Volume = volume or newsound.Volume
-		newsound.SoundGroup = SoundService.Main
-		newsound.Parent = parent
-		local toDestroy = destroyParent and parent or newsound
-		if (not dontDestroy) then
-			task.delay(newsound.TimeLength + 0.5, function()
-				toDestroy:Destroy()
-			end)
+	path.WaypointReached:Connect(function(agent, lastWaypoint, nextWaypoint)
+		if (humanoid.RootPart) then
+			if ((humanoid.RootPart.Position.y - 2.5) - nextWaypoint.Position.y > 1) then
+				humanoid.Jump = true
+			end
+			if (goal and (typeof(goal) == "Instance" or typeof(goal) == "Vector3")) then
+				path:Run(goal)
+			end
 		end
-
-		return newsound, toDestroy
+	end)
+	
+	local function generateNewRandomPosition(origin, radius, flag)
+		local pos = origin + Vector3.new(math.random(-radius, radius), 0, math.random(-radius, radius))
+		local state = path:Run(pos)
+		if (not state) then
+			flag += 1
+			if (flag >= 5) then
+				pos = humanoid.RootPart.Position + Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
+				humanoid:MoveTo(pos)
+				return pos
+			end
+			return generateNewRandomPosition(origin, radius, flag)
+		end
+		return pos
 	end
 	
-	local function canProcess()
-		return tick() - equipTime > gunSettings.equipDelay
-	end
-	
-	local function findHumanoid(part)
-		local foundhumanoid = part:FindFirstChildWhichIsA("Humanoid") or part.Parent:FindFirstChildWhichIsA("Humanoid")
-		if (part.Parent ~= workspace and foundhumanoid) then
-			return foundhumanoid
-		end
+	local function getGunFromInventory(ammo)
+		local guns = {}
 		
-		if (part.Parent ~= workspace) then
-			return findHumanoid(part.Parent)
-		end
-		
-		return nil
-	end
-	
-	local function onscreen(pos)
-		local _,screen = workspace.CurrentCamera:WorldToScreenPoint(pos)
-		return screen
-	end
-	
-	local function findCharInString(String, CharacterToFind, Start, End)
-		if not String or not CharacterToFind or not Start then return end
-		if not End then End = string.len(String) end
-		local CharacterPos
-		for i = Start, End do
-			if string.sub(String, i, i) == CharacterToFind then
-				CharacterPos = i
-				break
-			end
-		end
-		return CharacterPos
-	end
-
-	local function getMaterialString(Part)
-		if not Part then return end
-		local EnumAsString = tostring(Part.Material)
-		local FirstDotPos = findCharInString(EnumAsString, ".", 1)
-		if FirstDotPos then
-			local SecondDotPos = findCharInString(EnumAsString, ".", FirstDotPos + 1)
-			if SecondDotPos then
-				local MaterialOfPart = string.sub(EnumAsString, SecondDotPos + 1)
-				return MaterialOfPart
-			end
-		end
-	end
-	
-	local function dryFire()
-		if (not reloading and humanoid.Health > 0) then
-			playSound(randomChildren(Assets.Sounds.Guns[tool.Name].DryFire), corePart.FirePoint):Play()
-			anims.fire:Play()
-			anims.fire:AdjustWeight(gunSettings.fire.dryFireWeight)
-		end
-	end
-	
-	local function unaim()
-		if (aiming) then
-			playSound(randomChildren(Assets.Sounds.aim), player.PlayerGui):Play()
-			Network:FireServer("aim", tool, false)
-		end
-		aiming = false
-		if (scoping and #visibleParts > 0) then
-			for _,part in pairs(visibleParts) do
-				part.instance.Transparency = part.transparent
-			end
-		end
-		scoping = false
-		gunUI.Scope.Visible = false
-		TweenService:Create(workspace.CurrentCamera, TweenInfo.new(gunSettings.aim.aimLerp, gunSettings.aim.aimEasingStyle, gunSettings.aim.aimEasingDirection), {FieldOfView = 70}):Play()
-		Events.client:Fire("aim-up")
-		UserInputService.MouseDeltaSensitivity = defaultMouseDeltaSens
-		
-		for _,line in pairs(gunUI.Crosshair.Main:GetChildren()) do
-			local ui = line:FindFirstChildWhichIsA("UIBase")
-			if (ui) then
-				ui.Enabled = true
-			end
-			TweenService:Create(line, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {BackgroundTransparency = 0}):Play()
-		end
-		
-		anims.idle:AdjustSpeed(1)
-		if (not reloading) then
-			setCrosshairs(gunSettings.crosshair.idle, true)
-		end
-	end
-	
-	local function canShoot()
-		local can = true
-		local region3 = Region3.new(corePart.FirePoint.WorldPosition, corePart.FirePoint.WorldPosition)
-		local parts = workspace:FindPartsInRegion3WithIgnoreList(region3, {character, workspace.Terrain.Ignore}, math.huge)
-		if (#parts > 0) then
-			for _,part in pairs(parts) do
-				if (part:IsA("Part") and part.CanCollide == true and not part:IsDescendantOf(workspace.Characters)) then
-					can = false
-					break
-				end
-			end
-		end
-		if (can) then
-			local params = RaycastParams.new()
-			params.FilterDescendantsInstances = {character, workspace.Terrain.Ignore}
-			params.IgnoreWater = true
-			
-			local cast = workspace:Raycast(corePart.FirePoint.WorldPosition, (humanoid.RootPart.Position - corePart.FirePoint.WorldPosition), params)
-			if (cast) then
-				local part = cast.Instance
-				if (part:IsA("Part") and part.CanCollide == true and not part:IsDescendantOf(workspace.Characters)) then
-					can = false
+		for _,tool in pairs(backpack:GetChildren()) do
+			if (tool:IsA("Tool") and tool:GetAttribute("IsGun") == true) then
+				repeat task.wait() until tool:GetAttribute("ClipCurrent") ~= nil
+				if (ammo) then
+					if (tool:GetAttribute("ClipCurrent") > 0) then
+						guns[#guns + 1] = tool
+					end
+				else
+					if (tool:GetAttribute("ClipCurrent") < 1) then
+						guns[#guns + 1] = tool
+					end
 				end
 			end
 		end
 		
-		return can
+		if (#guns > 0) then
+			return guns[math.random(1, #guns)]
+		end
+		
+		return false
 	end
 	
-	if (gunSettings.crosshair.enable == false) then
-		for _,frame in pairs(gunUI.Crosshair.Main:GetChildren()) do
-			if (frame.Name ~= "b") then
-				frame.Visible = false
+	local function unequipTools()
+		for _,tool in pairs(character:GetChildren()) do
+			if (tool:IsA("Tool")) then
+				tool.Parent = backpack
+			end
+		end
+	end
+	
+	local function equipTool(tool)
+		if (tool) then
+			unequipTools()
+			if (typeof(tool) == "string") then
+				backpack[tool].Parent = character
 			else
-				frame.Size = UDim2.new(0, 0, 0, 0)
-				frame.BorderSizePixel = 0
+				tool.Parent = character
+			end
+		end
+	end
+	unequipTools()
+	equipTool(getGunFromInventory(true))
+	
+	local function fireGun(targetPosition)
+		local direction = getDirection(character.Head.Position, targetPosition)
+		local aimX, aimY, aimZ = 135, 60, 135
+		direction = direction + Vector3.new(math.random(-aimX, aimX), math.random(-aimY, aimY), math.random(-aimZ, aimZ)) / 1000
+		local gun = character:FindFirstChildWhichIsA("Tool")
+		if (gun and gun:GetAttribute("IsGun") == true) then
+			if (gun:GetAttribute("ClipCurrent") < 1 and gun:GetAttribute("Reloading") == false) then
+				local otherFullAmmoGun = getGunFromInventory(true)
+				if (otherFullAmmoGun) then
+					equipTool(otherFullAmmoGun)
+				else
+					gun["__bind"]["__reload"]:Fire()
+				end
+			else
+				gun["__bind"]:Fire(true, direction)
 			end
 		end
 	end
 	
-	local boltclicked = false
-	mouse.Button1Down:Connect(function()
-		active = true
-		local fireRound = 0
-		local boltIdle, boltIdleInstance = nil
-		if (gunSettings.fire.boltDelay > 0) then
-			boltIdle, boltIdleInstance = playNormalSound(randomChildren(Assets.Sounds.Guns[tool.Name].BoltIdle), corePart, nil, nil, true)
+	local function talk(textGoal, chat)
+		if (humanoid.Health < 1) then
+			return
 		end
-		while active and equipped do
-			if (clipCurrent < 1) then
-				dryFire()
-				
+	
+		
+		local voicelineType = Assets.Sounds.voicelines:FindFirstChild(VoiceLineType) or Assets.Sounds.voicelines.Default
+		local header = chatline.convertHeaderToText(textGoal)
+		if (chatBubble or chat or not header) then
+			local text = typeof(textGoal) == "table" and textGoal[math.random(1, #textGoal)] or textGoal
+			ChatService:Chat(character.Head, text, "White")
+			network:FireAllClients("create", "botChat", character.Name, text)
+		elseif (voiceline and voicelineType and character:FindFirstChild("Head")) then
+			local pitch = math.random(10, 15) / 100
+			if (math.random(2) == 1) then
+				pitch = -pitch
+			end
+			network:FireAllClients("create", "sound", randomChildren(voicelineType[header]), character.Head, pitch, nil, nil, {5, 10, 25}, true, "__talking")
+		end
+	end
+	
+	local function callBackup()
+		if (not backupRequested) then
+			backupRequested = true
+			talk(chatline.backupText)
+			Events.ai:Fire("backup", humanoid.RootPart.Position, guid, teamValue.Value)
+		end
+	end
+	
+	--[[local sphereCollision = Assets.Misc.sphereCollision:Clone()
+	sphereCollision.Name = "__collision"
+	sphereCollision.Parent = character
+
+	local weld = Instance.new("Weld")
+	weld.Part0 = humanoid.RootPart
+	weld.Part1 = sphereCollision
+	weld.C0 = CFrame.new(0, -0.450004578, -0.0999984741, 0, 0, 1, -0.999999762, 0, 0, 0, -0.999999762, 0)
+	weld.Parent = sphereCollision]]
+
+	task.spawn(function()
+		while humanoid:IsDescendantOf(workspace) do
+			if (humanoid.Health < 1) then
 				break
 			end
 			
-			if (not reloading and not reloadCancelled and settings.ragdoll.Value == false and humanoid:GetAttribute("run") == false and not altReload and canShoot() and canProcess() and tick() - fireDelay > (fireMode == 2 and gunSettings.fire.fireDelay * 2 or gunSettings.fire.fireDelay) and clipCurrent > 0 and humanoid.Health > 0) then
-				local function fire()
-					if (gunSettings.fire.boltDelay > 0 and (not boltclicked or gunSettings.fire.boltPerRound)) then
-						local boltStartSound
-						if (anims.boltStart) then
-							anims.boltStart:Play()
-							boltStartSound = playNormalSound(randomChildren(Assets.Sounds.Guns[tool.Name].BoltStart), corePart)
-							boltStartSound:Play()
-							task.defer(function()
-								while humanoid:IsDescendantOf(workspace) do
-									if (boltclicked) then
-										break
-									end
-									
-									if (anims.boltStart.TimePosition >= anims.boltStart.Length - 0.01) then
-										anims.boltStart:AdjustSpeed(0)
-										break
-									end
-									task.wait()
-								end
-							end)
-						end
-						if (anims.boltclick) then
-							anims.boltclick:Play(gunSettings.fire.boltDelay)
-						end
-						
-						local click = tick()
-						while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-							if (tick() - click >= gunSettings.fire.boltDelay) then
-								break
-							end
-							task.wait()
-						end
-						if (boltStartSound) then
-							boltStartSound:Stop()
-						end
-						if (anims.boltStart) then
-							anims.boltStart:Stop()
-						end
-						if (anims.boltclick and not anims.boltclick.Looped) then
-							anims.boltclick:Stop(0.5)
-						end
-						if (tick() - click < gunSettings.fire.boltDelay) then
-							return
-						end
-					end
-					boltclicked = true
-					shoveCrosshairs(gunSettings.crosshair.fire)
-					local db = false
-					firing = true
-					fireDelay = tick()
-					if (anims.reload) then
-						anims.reload:Stop()
-					end
-					if (anims.altReload) then
-						anims.altReload:Stop()
-					end
-					if (anims.preReload) then
-						anims.preReload:Stop()
-					end
-					if (anims.holster) then
-						anims.holster:Stop()
-					end
-					anims.equip:Stop()
-					anims.fire:Play()
-					if (boltclicked and boltIdle and not boltIdle.IsPlaying) then
-						boltIdle:Play()
-					end
-					if (aiming) then
-						anims.fire:AdjustWeight(gunSettings.fire.aimFireWeight)
-					end
-					fireRound += 1
-					
-					local recoilX = math.random(gunSettings.fire.recoil.x[1], gunSettings.fire.recoil.x[2]) / 20
-					local recoilY = math.random(gunSettings.fire.recoil.y[1], gunSettings.fire.recoil.y[2]) / 20
-					local recoilZ = math.random(gunSettings.fire.recoil.z[1], gunSettings.fire.recoil.z[2]) / 25
-					if (aiming) then
-						recoilX = recoilX / gunSettings.fire.recoilAim
-						recoilY = recoilY / gunSettings.fire.recoilAim
-						recoilZ = recoilZ / gunSettings.fire.recoilAim
-					end
-					recoil:Accelerate(Vector3.new(recoilX, recoilY, recoilZ))
-					task.delay(1 / 30, function()
-						recoil:Accelerate(Vector3.new(-recoilX / gunSettings.fire.recoil.recoilBackSize, -recoilY / gunSettings.fire.recoil.recoilBackSize, 0))
-					end)
-					playSound(randomChildren(Assets.Sounds.Guns[tool.Name].Fire), corePart.FirePoint, nil, nil, tool:GetAttribute("Silencer")):Play()
-					if (clipCurrent < clipSize / 2) then
-						playNormalSound(randomChildren(Assets.Sounds.Guns[tool.Name].LowAmmo), corePart.FirePoint, math.min((2.5 / (clipSize * 2)) * (clipSize - clipCurrent), 1.25)):Play()
-					end
-					
-					task.spawn(function()
-						for _,muzzle in pairs(corePart.FirePoint:GetChildren()) do
-							if (muzzle:IsA("ParticleEmitter")) then
-								muzzle:Emit(muzzle.Rate)
-							elseif (muzzle:IsA("Light") and muzzle.Name == "Light") then
-								local light = muzzle:Clone()
-								light.Name = "__light"
-								light.Enabled = true
-								light.Parent = corePart.FirePoint
-								task.delay(0.01, function()
-									light:Destroy()
-								end)
-							end
-						end
-						
-						if (not gunSettings.fire.altReloadPerRound) then
-							Events.create:Fire("shell", Assets.Bullets[gunSettings.ammo.bulletType], corePart.ShellPoint.WorldCFrame, humanoid.RootPart.CFrame.RightVector * math.random(gunSettings.ammo.ejectVelocity.range[1], gunSettings.ammo.ejectVelocity.range[2]) + Vector3.new(0, math.random(gunSettings.ammo.ejectVelocity.up[1], gunSettings.ammo.ejectVelocity.up[2]), 0), character)
-						end
-					end)
-					
-					Network:FireServer("fire", tool, gunSettings, mouse.UnitRay.Direction)
-					
-					for k = 1, gunSettings.fire.bulletPerRound do
-						local caster = Raycast.new()
-						caster.SimulateBeforePhysics = false
-						local params = RaycastParams.new()
-						params.FilterDescendantsInstances = {workspace.Terrain.Ignore, character}
-						params.IgnoreWater = true
+			--PhysicsService:SetPartCollisionGroup(sphereCollision, "EntityCollision")
+			
+			local targetCharacter = findHumanoid(workspace.Characters)
+			local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildWhichIsA("Humanoid")
 
-						local behavior = Raycast.newBehavior()
-						behavior.RaycastParams = params
-						behavior.Acceleration = gunSettings.fire.acceleration
-						behavior.MaxDistance = 3500
+			if (aiActive) then
+				if (targetCharacter) then
+					chasing = true
 
-						local tracers = {current = nil, last = nil, beam = nil}
-						tracers.trail = Assets.Misc.bulletTrail:Clone()
-						tracers.last = Assets.Misc.tracers["0"]:Clone()
-						tracers.current = Assets.Misc.tracers["1"]:Clone()
-						tracers.beam = Assets.Misc.tracers.beam:Clone()
-						tracers.beam.Color = ColorSequence.new(gunSettings.ammo.bulletTrailColor)
-						for _,instance in pairs(tracers) do
-							instance.Parent = workspace.Terrain
-						end
-						tracers.beam.Attachment0 = tracers.last
-						tracers.beam.Attachment1 = tracers.current
+					local isSCP = isTargetSCP(targetCharacter)
+					local scpType = isSCP and string.gsub(targetCharacter.Name, "%D", "") or ""
+					local scpChatline = isSCP and require(Assets.Modules.chat[scpType])
 
-						tracers.last.WorldCFrame = corePart.FirePoint.WorldCFrame
-						tracers.current.WorldCFrame = corePart.FirePoint.WorldCFrame
-						
-						tracers.trail.CFrame = corePart.FirePoint.WorldCFrame
-						tracers.trail.Trail.Enabled = true
-						
-						local origin = corePart.FirePoint.WorldCFrame.Position
-						local direction = mouse.UnitRay.Direction + (Vector3.new(
-							math.random(gunSettings.fire.spread.x[1], gunSettings.fire.spread.x[2]),
-							math.random(gunSettings.fire.spread.y[1], gunSettings.fire.spread.y[2]),
-							math.random(gunSettings.fire.spread.z[1], gunSettings.fire.spread.z[2])
-							) / 1000)
-						caster:Fire(corePart.FirePoint.WorldCFrame.Position, direction, gunSettings.fire.fireSpeed, behavior)
-						
-						local lastPoint
-						caster.LengthChanged:Connect(function(caster, currentPoint, direction)
-							local distanceFromCamera = getDistance(workspace.CurrentCamera.CFrame.Position, currentPoint)
-							local tracerWidth = math.max(math.min(distanceFromCamera / (5000 / distanceFromCamera) * 0.05, 30), 0.05)
-							tracers.beam.Width0 = math.max(tracerWidth / 2, 0.05)
-							tracers.beam.Width1 = tracerWidth
-							
-							tracers.trail.CFrame = CFrame.new(currentPoint)
-							
-							if (lastPoint) then
-								tracers.last.WorldCFrame = tracers.last.WorldCFrame:lerp(CFrame.new(lastPoint), (180 / distanceFromCamera) * deltaTime)
-							end
-							--[[if (lastPoint) then
-								tracers.last.WorldCFrame = CFrame.new(lastPoint)
-							end]]
-							--tracers.current.WorldCFrame = CFrame.new(currentPoint)
-							tracers.current.WorldCFrame = tracers.current.WorldCFrame:lerp(CFrame.new(currentPoint), 0.15 * deltaTime)
-							lastPoint = currentPoint
-							
-							if (distanceFromCamera > 300 and not onscreen(currentPoint)) then
-								--caster:Terminate()
-							end
-						end)
+					local losingSight = 0
+					local damageTime = 0
+					local updatedTargetPosition = targetHumanoid.RootPart.Position
 
-						caster.RayHit:Connect(function(caster, result, velocity)
-							task.spawn(function()
-								tracers.current.WorldCFrame = CFrame.new(result.Position)
-								tracers.trail.CFrame = CFrame.new(origin)
-								task.delay((1 / 60) * deltaTime, function()
-									tracers.trail.CFrame = CFrame.new(result.Position)
-								end)
-								while tracers.last:IsDescendantOf(workspace.Terrain) do
-									local distanceFromCamera = getDistance(workspace.CurrentCamera.CFrame.Position, result.Position)
-									local tracerWidth = math.max(math.min(distanceFromCamera / 10 * 0.05, 1e8), 0.05)
-									tracers.beam.Width0 = math.max(tracerWidth / 2, 0.05)
-									tracers.beam.Width1 = tracerWidth
-									tracers.last.WorldCFrame = tracers.last.WorldCFrame:lerp(CFrame.new(result.Position), 0.65)
-									task.wait(1 / 144)
-								end
-							end)
-							
-							local targetHumanoid = findHumanoid(result.Instance)
-							if (targetHumanoid and not result.Instance:FindFirstAncestorWhichIsA("Tool")) then
-								if (not table.find(limbs, result.Instance.Name)) then
-									Events.create:Fire("gunDebris", result.Instance, result.Position, result.Normal, velocity, math.random(gunSettings.ammo.bulletsize[1], gunSettings.ammo.bulletsize[2]) / 10)
-								end
-								
-								local hitPosition = CFrame.new(result.Position, result.Position - (result.Normal * 1.5))
-								local args = {
-									targetHumanoid,
-									result.Instance,
-									result.Position,
-									result.Normal,
-									origin,
-									velocity,
-									targetHumanoid.RootPart.CFrame:toObjectSpace(hitPosition)
-								}
-								local lastHealth = targetHumanoid.Health
-								local damaged = lastHealth - gunSettings.damage
-								Events.create:Fire("particle", Assets.Particles.blood, math.min((lastHealth - damaged) / 2, 5), args[3], 5)
-								local hitState, critical = Network:InvokeServer("hit", tool, gunSettings, args)
-								if (hitState) then
-									if (not db) then
-										db = true
-										playSound(Assets.Sounds.hitmark, player.PlayerGui):Play()
-										
-										local hitmark = gunUI.Crosshair.Hitmark:Clone()
-										hitmark.Name = "__hitmark"
-										hitmark.ImageTransparency = 0
-										hitmark.ImageColor3 = critical and Color3.fromRGB(170, 0, 0) or Color3.fromRGB(255, 255, 255)
-										hitmark.Parent = gunUI.Crosshair
-										Debris:AddItem(hitmark, 3)
-										TweenService:Create(hitmark, TweenInfo.new(1.5, Enum.EasingStyle.Quint), {ImageTransparency = 1, Size = UDim2.new(0, 0, 0, 0)}):Play()
-									end
-								end
+					local gyro = Instance.new("BodyGyro")
+					gyro.MaxTorque = Vector3.new(1e3, 1e3, 1e3)
+					gyro.D = 50
+					gyro.Parent = humanoid.RootPart
+					
+					local teammateSpotted = findTeammate(workspace.Characters)
+					if (not seenEnemy and tick() - spottedDelay >= 10 and (teammateSpotted and teammateSpotted.AI.vars.spotted.Value == false or not teammateSpotted)) then
+						spottedDelay = tick()
+						--local isSCP = isTargetSCP(targetCharacter)
+						if (lastTargetName == targetCharacter.Name) then
+							if (not isSCP) then
+								talk(chatline.foundText)
 							else
-								Events.create:Fire("gunDebris", result.Instance, result.Position, result.Normal, velocity, math.random(gunSettings.ammo.bulletsize[1], gunSettings.ammo.bulletsize[2]) / 10)
-								if (isPartThin(result.Instance) and result.Instance.Material == Enum.Material.Glass and not findHumanoid(result.Instance) and not result.Instance:FindFirstChild("__break") and not result.Instance.Parent:FindFirstChild("__break")) then
-									local broke = Instance.new("StringValue")
-									broke.Name = "__break"
-									broke.Parent = result.Instance
-									
-									local args = {
-										result.Instance,
-										result.Position,
-										result.Normal,
-										origin,
-										velocity
-									}
-									
-									Network:FireServer("glass", tool, gunSettings, args)
-								end
+								isLastTargetSCP = true
+								talk(targetCharacter.Name .. " Spotted!", true)
 							end
-						end)
-
-						caster.CastTerminating:Connect(function()
-							--tracers.beam.Enabled = false
-							tracers.current.light.Enabled = false
-							task.wait(0.15)
-							for _,instance in pairs(tracers) do
-								if (instance:IsA("Part")) then
-									Debris:AddItem(instance, 1.5)
-								else
-									instance:Destroy()
-								end
+						else
+							if (not isSCP) then
+								talk(chatline.spottedClassDText)
+							else
+								isLastTargetSCP = true
+								talk(targetCharacter.Name .. " Spotted!", true)
 							end
-						end)
-					end
-					
-					clipCurrent = math.max(clipCurrent - 1, 0)
-					
-					fired = true
-					if (not gunSettings.fire.altReloadPerRound) then
-						fired = false
-					end
-					
-					firing = false
-				end
-				
-				if (gunSettings.fire.altReloadPerRound and fired) then
-					fired = false
-					--unaim()
-					altReload = true
-					--task.wait(gunSettings.fire.altReloadDelay)
-					if (equipped) then
-						Events.create:Fire("shell", Assets.Bullets[gunSettings.ammo.bulletType], corePart.ShellPoint.WorldCFrame, humanoid.RootPart.CFrame.RightVector * math.random(gunSettings.ammo.ejectVelocity.range[1], gunSettings.ammo.ejectVelocity.range[2]) + Vector3.new(0, math.random(gunSettings.ammo.ejectVelocity.up[1], gunSettings.ammo.ejectVelocity.up[2]), 0), character)
-						playSound(randomChildren(Assets.Sounds.Guns[tool.Name].AltReload), corePart):Play()
-						anims.altReload:Play()
-
-						local stoppedConnection
-						stoppedConnection = anims.altReload.Stopped:Connect(function()
-							altReload = false
-							stoppedConnection:Disconnect()
-						end)
-					end
-					
-					return
-				end
-				
-				if (fireMode == 2) then
-					for k = 1, gunSettings.fire.burstPerRound do
-						if (not equipped or not canShoot()) then
-							break
 						end
-						if (clipCurrent < 1) then
-							dryFire()
-							break
-						end
-						fire()
-						task.wait(gunSettings.fire.burstDelay)
-					end
-					
-					break
-				else
-					fire()
-				end
-				
-				if (fireMode == 1) then
-					break
-				end
-			end
-			
-			task.wait()
-		end
-		
-		if (boltIdleInstance) then
-			boltIdleInstance:Destroy()
-		end
-		if (anims.boltclick) then
-			anims.boltclick:Stop(0.5)
-		end
-		if (anims.boltEnd and boltclicked) then
-			if (not reloading) then
-				anims.boltEnd:Play()
-			end
-			playNormalSound(randomChildren(Assets.Sounds.Guns[tool.Name].BoltEnd), corePart):Play()
-		end
-		boltclicked = false
-	end)
-	
-	tool.Deactivated:Connect(function()
-		active = false
-		
-		reloadCancelled = false
-	end)
-	
-	tool.Equipped:Connect(function()
-		equipped = true
-		equipTime = tick()
-		
-		fired = false
-		
-		anims.equip:Play()
-		anims.idle:Play()
-		
-		gunUI.Parent = player.PlayerGui
-		
-		setCrosshairs(1, false)
-		setCrosshairs(gunSettings.crosshair.idle, true, 0.5, Enum.EasingStyle.Back, Enum.EasingDirection.InOut)
-		
-		TweenService:Create(gunDataFrame, TweenInfo.new(1, Enum.EasingStyle.Quint), {Position = UDim2.new(0.787, 0, 0.883, 0)}):Play()
-		
-		table.insert(connections, UserInputService.InputBegan:Connect(function(key, typing)
-			if ((key.UserInputType == Enum.UserInputType.MouseButton2 or (key.KeyCode == Enum.KeyCode.Q and not typing)) and gunSettings.aim.canAim and not reloading and IsInFirstPerson() and humanoid.Health > 0) then
-				if (not aiming and humanoid:GetAttribute("run") == false) then
-					TweenService:Create(workspace.CurrentCamera, TweenInfo.new(gunSettings.aim.aimLerp, gunSettings.aim.aimEasingStyle, gunSettings.aim.aimEasingDirection), {FieldOfView = gunSettings.aim.aimFOV}):Play()
-					aiming = true
-					Network:FireServer("aim", tool, true)
-					Events.client:Fire("aim-down")
-					defaultMouseDeltaSens = UserInputService.MouseDeltaSensitivity
-					playSound(randomChildren(Assets.Sounds.aim), player.PlayerGui):Play()
-
-					for _,line in pairs(gunUI.Crosshair.Main:GetChildren()) do
-						local ui = line:FindFirstChildWhichIsA("UIBase")
-						if (ui) then
-							ui.Enabled = false
-						end
-						TweenService:Create(line, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {BackgroundTransparency = 1}):Play()
-					end
-
-					anims.idle.TimePosition = 0
-					anims.idle:AdjustSpeed(0)
-					setCrosshairs(1, true)
-				else
-					unaim()
-				end
-			end
-			
-			if (not typing) then
-				if (key.KeyCode == Enum.KeyCode.R and canProcess() and not reloading and clipCurrent < clipSize and maxAmmo > 0) then
-					reloading = true
-					setCrosshairs(gunSettings.crosshair.reload, true)
-					TweenService:Create(gunUI.Crosshair.Main.Center, TweenInfo.new(1, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(70, 70, 70)}):Play()
-					TweenService:Create(progressFrame, TweenInfo.new(1, Enum.EasingStyle.Back), {Position = UDim2.new(0.5, 0, 0.35, 0)}):Play()
-					
-					progressFrame.bar.Size = UDim2.new(0, 0, 0, 1)
-					if (anims.reload) then
-						playSound(randomChildren(Assets.Sounds.Guns[tool.Name].Reload), corePart):Play()
-						anims.reload:Play()
-						Network:FireServer("reload", tool, gunSettings, "register")
-
-						while anims.reload.TimePosition < anims.reload.Length do
-							if (not anims.reload.IsPlaying) then
-								break
-							end
-							if (UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)) then
-								reloadCancelled = true
-								anims.reload:Stop()
-								Network:FireServer("reload", tool, gunSettings, "cancel")
-								break
-							end
-							--humanoid.WalkSpeed = 6
-							progressFrame.bar.Size = UDim2.new((anims.reload.TimePosition / anims.reload.Length) * 1, 0, 1)
-							task.wait()
-						end 
 						
-					--	humanoid.WalkSpeed = defaultspeed
-						if (anims.reload.TimePosition >= anims.reload.Length and not reloadCancelled) then
-							Network:FireServer("reload", tool, gunSettings, "reloaded")
-							local lastAmmo = clipSize - clipCurrent
-							clipCurrent = math.min(clipCurrent + maxAmmo, clipSize)
-							maxAmmo = math.max(maxAmmo - lastAmmo, 0)
+						lastTargetName = targetCharacter.Name
+					end
+					script.vars.spotted.Value = true
+					seenEnemy = true
+					
+					-- // call backup
+					task.delay(1, function()
+						if (stringMatchInTable(scpType, callBackupOnSCPs)) then
+							callBackup()
 						end
-						TweenService:Create(progressFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Position = UDim2.new(0.5, 0, -0.5, 0)}):Play()
-					elseif (anims.preReload) then
-						anims.fire:Stop()
-						anims.preReload:Play(0.15)
-						Network:FireServer("reload", tool, gunSettings, "register")
-						
-						task.wait(0.45)
-						for k = clipCurrent, clipSize - 1 do
-							if (maxAmmo < 1 or not equipped or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)) then
+					end)
+
+					local sideMoveDelay = tick()
+					while targetCharacter:IsDescendantOf(workspace.Characters) and humanoid.Health > 0 and not backupping do
+						local otherTargetHumanoid = findHumanoid(workspace.Characters)
+						if (otherTargetHumanoid and otherTargetHumanoid ~= targetCharacter or getDistance(targetCharacter.PrimaryPart, humanoid.RootPart) > abortChasingDistance or targetHumanoid.Health <= 0) then
+							if (not isSCP or (scpType == "173" and targetCharacter.viewers.Value > 3)) then
 								break
 							end
-							playSound(randomChildren(Assets.Sounds.Guns[tool.Name].InsertBullet), corePart):Play()
-							Network:FireServer("reload", tool, gunSettings, "inserted")
-							anims.insertBullet:Play()
-							while anims.insertBullet.TimePosition < anims.insertBullet.Length do
-								if (not anims.insertBullet.IsPlaying or UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)) then
+						end
+
+						--[[if (not character:FindFirstChildWhichIsA("Tool")) then
+							for _,tool in pairs(backpack:GetChildren()) do
+								if (tool:IsA("Tool") and tool:GetAttribute("IsGun") == true) then
+									tool.Parent = character
 									break
 								end
-								--humanoid.WalkSpeed = 6
-								progressFrame.bar.Size = UDim2.new((anims.insertBullet.TimePosition / anims.insertBullet.Length) * 1, 0, 1)
-								task.wait()
 							end
-							anims.insertBullet:Stop(0.25)
-							clipCurrent = math.min(clipCurrent + 1, clipSize)
-							maxAmmo = math.max(maxAmmo - 1, 0)
+						end]]
+
+						local cansee = canSee(targetCharacter)
+						if (not cansee) then
+							losingSight += 1
+						else
+							losingSight = 0
+							updatedTargetPosition = targetHumanoid.RootPart.Position
 						end
-						
-						--humanoid.WalkSpeed = defaultspeed
-						TweenService:Create(progressFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Position = UDim2.new(0.5, 0, -0.5, 0)}):Play()
-						if (equipped) then
-							task.wait(gunSettings.fire.altReloadDelay)
-							playSound(randomChildren(Assets.Sounds.Guns[tool.Name].AltReload), corePart):Play()
-							anims.altReload:Play()
+						if (losingSight > losingSightMax) then
+							talk(chatline.lostTrackText)
+							break
 						end
-						
-						Network:FireServer("reload", tool, gunSettings, "finished")
+						local distance = getDistance(targetHumanoid.RootPart, humanoid.RootPart)
+						if (distance <= 5 and tick() - damageTime >= attackDelay and humanoid.Health > 0) then
+							damageTime = tick()
+							targetHumanoid:TakeDamage(attackDamage)
+						end
+
+						goal = clampDistanceBetweenVectors(updatedTargetPosition, humanoid.RootPart.Position, minMeleeRadius)
+						if (distance <= meleeActiveRadius or not cansee or (distance > meleeActiveRadius and distance > gunActiveRadius)) then
+							path:Run(goal)
+							speed = runspeed
+
+							if (distance <= meleeActiveRadius and not stringMatchInTable(scpType, doNotKillSCPs)) then
+								fireGun(targetHumanoid.RootPart.Position + Vector3.new(0, math.random(1, 15) / 10, 0))
+							end
+
+							if (scpType == "173" and targetCharacter.caged.Value == false and distance < 5 and humanoid.Health > 0) then
+								targetCharacter.caged.Value = true
+
+								talk(scpChatline.action)
+								task.wait(5)
+								if (humanoid.Health < 1) then
+									targetCharacter.caged.Value = false
+									return
+								end
+
+								local cage = Assets.Models["173-Cage"]:Clone()
+								cage.CFrame = targetHumanoid.RootPart.CFrame
+								cage.Parent = workspace.Debris
+
+								local weld = Instance.new("Weld")
+								weld.Part0 = targetHumanoid.RootPart
+								weld.Part1 = cage
+								weld.Parent = cage
+
+								local ignore = Instance.new("StringValue")
+								ignore.Name = "__ignore"
+								ignore.Parent = targetCharacter
+
+								talk(scpChatline.recontain)
+
+								local offsetHeight = Vector3.new(0, 3.5, 0)
+								local goalCFrame = cage.CFrame + offsetHeight
+								for k = 1, 100 do
+									cage.CFrame = cage.CFrame:lerp(goalCFrame, 0.08)
+									task.wait()
+								end
+
+								task.spawn(function()
+									while cage do
+										if (humanoid.Health < 1) then
+											break
+										end
+										cage.CFrame = cage.CFrame:lerp(humanoid.RootPart.CFrame + humanoid.RootPart.CFrame.LookVector * 8 + offsetHeight, 0.15)
+										task.wait()
+									end
+
+									task.wait(5)
+									if (targetCharacter and targetCharacter:FindFirstChild("caged")) then
+										targetCharacter.caged.Value = false
+									end
+									cage:Destroy()
+									ignore:Destroy()
+								end)
+
+								break
+							end
+						elseif (path.Status == simplePath.StatusType.Active) then
+							path:Stop()
+						end
+
+						if (distance > meleeActiveRadius and distance <= gunActiveRadius) then
+							-- // move random side
+							if (tick() - sideMoveDelay >= math.random(sideMoveDelayTime[1], sideMoveDelayTime[2]) / 10) then
+								sideMoveDelay = tick()
+								humanoid:MoveTo(humanoid.RootPart.Position + humanoid.RootPart.CFrame.RightVector * math.random(-sideMoveLength, sideMoveLength))
+							end
+
+							if (isSCP and stringMatchInTable(scpType, chargeSCPs)) then
+								if (math.random(20) == 1) then
+									path:Run(goal)
+								end
+							end
+
+							if ((canSee(targetCharacter) or math.random(60) == 1) and math.random(5) == 1 and not stringMatchInTable(scpType, doNotKillSCPs)) then
+								fireGun(targetHumanoid.RootPart.Position + Vector3.new(0, math.random(1, 15) / 10, 0))
+							elseif (not canSee(targetCharacter) and tick() - hideDelay > math.random(5, 10) and math.random(20) == 1 and not stringMatchInTable(scpType, doNotKillSCPs)) then
+								if (not isLastTargetSCP) then
+									hideDelay = tick()
+									talk(chatline.hideText)
+								else
+									isLastTargetSCP = false
+								end
+							end
+
+							speed = defaultspeed / 1.5
+						end
+
+						humanoid.AutoRotate = false
+						gyro.CFrame = CFrame.new(Vector3.new(humanoid.RootPart.Position.x, 0, humanoid.RootPart.Position.z), Vector3.new(goal.x, 0, goal.z))
+						a1.WorldPosition = targetHumanoid.RootPart.Position + Vector3.new(0, 1.5, 0)
+
+						task.wait(globalRate)
 					end
 					
-					TweenService:Create(gunUI.Crosshair.Main.Center, TweenInfo.new(1, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(255, 255, 255)}):Play()
-					setCrosshairs(gunSettings.crosshair.idle, true)
-					--shoveCrosshairs(gunSettings.crosshair.idle)
-					fired = false
-					reloading = false
-				elseif (key.KeyCode == Enum.KeyCode.V and not switching and not reloading and not altReload) then
-					local mode = gunSettings.ammo.modeAvailable
-					if (#mode > 1) then
-						switching = true
-						modeSwitch += 1
-						if (modeSwitch > #mode) then
-							modeSwitch = 1
-						end
-						fireMode = mode[modeSwitch]
-						playSound(randomChildren(Assets.Sounds.Guns[tool.Name].Switch), corePart):Play()
-						if (anims.switch) then
-							anims.switch:Play()
-						end
-						task.wait(0.5)
-						switching = false
+					if (targetHumanoid.Health < 1 and combat:getKiller(targetHumanoid) ~= humanoid) then
+						talk(chatline.thanksText)
 					end
-				end
-			end
-		end))
-		
-		table.insert(connections, UserInputService.InputEnded:Connect(function(key)
-			if (key.UserInputType == Enum.UserInputType.MouseButton2) then
-				unaim()
-			end
-		end))
-		
-		table.insert(connections, UserInputService.InputChanged:Connect(function(input)
-			if (input.UserInputType == Enum.UserInputType.MouseMovement) then
-				desiredXOffset = math.min(math.max(input.Delta.x * swayMultiplier, -maxCameraOffset), maxCameraOffset)
-				desiredYOffset = math.min(math.max(input.Delta.y * swayMultiplier, -maxCameraOffset), maxCameraOffset)
-			end
-		end))
-		
-		local movespeed = 0
-		table.insert(connections, RunService.RenderStepped:Connect(function(dt)
-			deltaTime = dt * 60
-			
-			mouseMovement:Impulse(Vector3.new(desiredXOffset * dt, (desiredYOffset) * dt))
-			gunUI.Scope.Position = UDim2.new(0.5 + mouseMovement.Position.x, 0, 0.5 + mouseMovement.Position.y, 0)
-			gunUI.Scope.frame.Position = UDim2.new(-0.75 + mouseMovement.Position.x * 10, 0, -0.75 + mouseMovement.Position.y * 10, 0)
-			local camera = workspace.CurrentCamera
-			camera.CFrame *= CFrame.Angles(recoil.p.y * deltaTime, recoil.p.x * deltaTime, recoil.p.z)
-			
-			movespeed = Vector3.new(humanoid.RootPart.Velocity.x, 0, humanoid.RootPart.Velocity.z).magnitude
-			if (humanoid:GetAttribute("run") == true and not reloading and movespeed > 1) then
-				if (anims.holster and not anims.holster.IsPlaying) then
-					anims.idle:AdjustWeight(0.2, 0.25)
-					anims.holster:Play(0.45)
-				end
-			else
-				if (anims.holster and anims.holster.IsPlaying) then
-					anims.idle:AdjustWeight(1, 0.5)
-					anims.holster:Stop(0.45)
-				end
-			end
-			
-			if ((reloading or not IsInFirstPerson() or humanoid.Health < 1) and aiming) then
-				unaim()
-			end
-			
-			if (aiming) then
-				UserInputService.MouseDeltaSensitivity = defaultMouseDeltaSens / (100 / camera.FieldOfView)
-				
-				if (gunSettings.aim.allowScope) then
-					local distance = getDistance(workspace.CurrentCamera.CFrame.Position, gunModel.AimPart)
-					if (distance < 0.25 and not scoping) then
-						scoping = true
-						
-						gunUI.Scope.Visible = true
-						gunUI.Scope.frame.Position = UDim2.new(0, 0, -0.75, 0)
-						TweenService:Create(gunUI.Scope.frame, TweenInfo.new(1.5, Enum.EasingStyle.Quint), {Position = UDim2.new(-0.75, 0, -0.75, 0)}):Play()
-						
-						gunUI.Scope.zoom:Play()
-						
-						if (#visibleParts < 1) then
-							for _,part in pairs(gunModel:GetDescendants()) do
-								if (part:IsA("BasePart") and part.Transparency < 1) then
-									visibleParts[#visibleParts + 1] = {
-										["instance"] = part,
-										["transparent"] = part.Transparency
-									}
+
+					local gun = character:FindFirstChildWhichIsA("Tool")
+					if (gun and gun:GetAttribute("IsGun") == true) then
+						gun["__bind"]:Fire(false)
+					end
+					speed = defaultspeed
+					gyro:Destroy()
+					humanoid.AutoRotate = true
+					if (typeof(goal) == "Vector3" or typeof(goal) == "Instance") then
+						path:Run(goal)
+					end
+				else
+					if (not chasing and not backupping) then
+						script.vars.spotted.Value = false
+
+						local gun = character:FindFirstChildWhichIsA("Tool")
+						if (gun and gun:GetAttribute("IsGun") == true) then
+							if (gun:GetAttribute("ClipCurrent") < gun:GetAttribute("ClipSize")) then
+								gun["__bind"]["__reload"]:Fire()
+							else
+								local otherLowAmmoGun = getGunFromInventory(false)
+								if (otherLowAmmoGun) then
+									equipTool(otherLowAmmoGun)
 								end
 							end
 						end
-						
-						for _,part in pairs(visibleParts) do
-							part.instance.Transparency = 1
+
+						local foundTarget = false
+						local wanderTarget = findWanderHumanoid(workspace.Characters, wanderTargetDetectDistance)
+						local wanderTargetChance = math.random(1, 3)
+						if (wanderTarget and wanderTargetChance < 2) then
+							local wanderTargetHumanoid = wanderTarget:FindFirstChildWhichIsA("Humanoid")
+							goal = generateNewRandomPosition(wanderTargetHumanoid.RootPart.Position, wanderTargetRadius, 0)
+						else
+							goal = generateNewRandomPosition(humanoid.RootPart.Position, wanderRadius, 0)
+						end
+						local idle = tick()
+						local gyro = Instance.new("BodyGyro")
+						gyro.MaxTorque = Vector3.new(1e3, 1e3, 1e3)
+						gyro.D = lookRoughness
+						gyro.Parent = humanoid.RootPart
+						while humanoid.RootPart and goal and getDistance(goal, humanoid.RootPart) > 10 and not backupping do
+							if (findHumanoid(workspace.Characters)) then
+								foundTarget = true
+								break
+							end
+
+							if (humanoid.RootPart.Velocity.magnitude > 1) then
+								idle = tick()
+							else
+								if (tick() - idle > stuckTime) then
+									goal = humanoid.RootPart.Position + Vector3.new(math.random(-5, 5), 0, math.random(-5, 5))
+									humanoid:MoveTo(goal)
+									break
+								end
+							end
+
+							local lookDirection = false -- findLookDirection()
+							if (lookDirection and not humanoid.Jump and getDistance(humanoid.RootPart, lookDirection[#lookDirection]) > minLookDistance) then
+								local lookPosition = lookDirection[math.random(1, #lookDirection)]
+								lookPosition = Vector3.new(lookPosition.x, humanoid.RootPart.Position.y, lookPosition.z)
+								local lookCFrame = CFrame.new(humanoid.RootPart.Position + Vector3.new(0, 1.5, 0), lookPosition)
+								network:FireAllClients("cam/mouse", character, lookCFrame, {humanoid.RootPart.Position + Vector3.new(0, 1.5, 0), lookPosition})
+								for _,position in pairs(lookDirection) do
+									gyro.CFrame = CFrame.new(Vector3.new(humanoid.RootPart.Position.x, 0, humanoid.RootPart.Position.z), Vector3.new(position.x, 0, position.z))
+								end
+
+								humanoid.AutoRotate = false
+							else
+								gyro:Destroy()
+								humanoid.AutoRotate = true
+							end
+							task.wait()
+						end
+
+						gyro:Destroy()
+						humanoid.AutoRotate = true
+
+						if (not foundTarget) then
+							local time = tick()
+							local timeTowait = math.random(wanderDelayTime[1], wanderDelayTime[2]) / 10
+							while tick() - time < timeTowait do
+								if (findHumanoid(workspace.Characters) or backupping) then
+									break
+								end
+								task.wait()
+							end
+						end
+					end
+
+					chasing = false
+				end
+			end
+
+			task.wait(globalRate)
+		end
+	end)
+	
+	local connections = {}
+	local connected = true
+	local reload = false
+	task.defer(function()
+		while connected and humanoid:IsDescendantOf(workspace) do
+			if (character:FindFirstChild("Head")) then
+				a0.WorldPosition = character.Head.Position
+			end
+
+			local gun = character:FindFirstChildWhichIsA("Tool")
+			if (gun and gun:GetAttribute("IsGun") == true and gun:GetAttribute("Reloading") == true) then
+				reload = true
+				speed = 6
+			else
+				if (reload) then
+					reload = false
+					speed = defaultspeed
+				end
+			end
+
+			local targetCharacter = findHumanoid(workspace.Characters)
+			if (not targetCharacter and character:FindFirstChild("Head")) then
+				seenEnemy = false
+				local params = RaycastParams.new()
+				params.FilterDescendantsInstances = {character, workspace.Terrain.Ignore}
+				params.IgnoreWater = true
+
+				local cast = workspace:Raycast(character.Head.Position, humanoid.RootPart.CFrame.LookVector * 1000, params)
+				if (cast and cast.Instance.CanCollide == true) then
+					a1.WorldPosition = cast.Position
+				else
+					a1.WorldPosition = character.Head.Position + humanoid.RootPart.CFrame.LookVector * 10
+				end
+
+				local cast = workspace:Raycast(humanoid.RootPart.Position, humanoid.RootPart.CFrame.LookVector * 5, params)
+				if (cast and cast.Instance.CanCollide == true and not cast.Instance:IsDescendantOf(workspace.Debris) and not cast.Instance:IsDescendantOf(workspace.Characters)) then
+					local topY = cast.Instance.Position.y + (cast.Instance.Size.y / 2)
+					local movespeed = Vector3.new(humanoid.RootPart.Velocity.x, 0, humanoid.RootPart.Velocity.z).magnitude
+					if ((humanoid.RootPart.Position.y + 1.5) >= topY and movespeed > 0) then
+						humanoid.Jump = true
+					end
+				end
+			else
+				local targetHumanoid = targetCharacter:FindFirstChildWhichIsA("Humanoid")
+				if (targetHumanoid and targetHumanoid.RootPart) then
+					local lookCFrame = CFrame.new(humanoid.RootPart.Position + Vector3.new(0, 1.5, 0), targetHumanoid.RootPart.Position + Vector3.new(0, 1.5, 0))
+					network:FireAllClients("cam/mouse", character, lookCFrame, {humanoid.RootPart.Position + Vector3.new(0, 1.5, 0), targetHumanoid.RootPart.Position + Vector3.new(0, 1.5, 0)})
+				end
+			end
+
+			humanoid.WalkSpeed = speed
+			task.wait(globalRate)
+		end
+	end)
+	
+	local diedDebounce = false
+	local hurtSoundDelay = 0
+	local lastHealth = humanoid.Health
+	table.insert(connections, humanoid.HealthChanged:Connect(function(health)
+		local damageTaken = lastHealth - health
+		if (damageTaken > 0 and humanoid.Health > 0) then
+			task.defer(function()
+				if (damageTaken > 10 and tick() - hurtDelay >= math.random(5, 10)) then
+					hurtDelay = tick()
+					talk(chatline.hurtText)
+				end
+
+				if (damageTaken > 5 and damageTaken < 30 and tick() - hurtSoundDelay >= math.random(1, 3) / 10 and humanoid.Health > 0) then
+					hurtSoundDelay = tick()
+					local hurtSound = Assets.Sounds.Hurt:FindFirstChild(teamName)
+					if (not hurtSound) then
+						hurtSound = Assets.Sounds.Hurt.Default
+					end
+					if (character:FindFirstChild("Head")) then
+						playSound(randomChildren(hurtSound), character.Head):Play()
+					end
+				end
+
+				if (damageTaken > 10 and humanoid.Health < 30) then
+					callBackup()
+				end
+
+				characterFieldOfView = 360
+				if (jumpOnDamageTaken) then
+					task.spawn(function()
+						for k = 1, math.random(avoidDamageJumpAmount[1], avoidDamageJumpAmount[2]) do
+							if (findHumanoid(workspace.Characters)) then
+								break
+							end
+							humanoid.Jump = true
+							task.wait(math.random() * 1)
+						end
+					end)
+				end
+
+				for i = 1, math.random(avoidDamageAmount[1], avoidDamageAmount[2]) do
+					if (findHumanoid(workspace.Characters)) then
+						break
+					end
+					if (path.Status == simplePath.StatusType.Active) then
+						path:Stop()
+					end
+					goal = humanoid.RootPart.Position + Vector3.new(math.random(-avoidDamageRandomPositionRadius, avoidDamageRandomPositionRadius), 0, math.random(-avoidDamageRandomPositionRadius, avoidDamageRandomPositionRadius))
+					path:Run(goal)
+
+					local time = tick()
+					local timeWait = math.random(avoidDamageLength[1], avoidDamageLength[2]) / 10
+					while goal and getDistance(goal, humanoid.RootPart) > 0.5 do
+						if (tick() - time > timeWait or findHumanoid(workspace.Characters)) then
+							break
+						end
+						task.wait()
+					end
+					if (path.Status == simplePath.StatusType.Active and not findHumanoid(workspace.Characters)) then
+						path:Stop()
+					end
+				end
+
+				characterFieldOfView = defaultFOV
+			end)
+		elseif (humanoid.Health < 1 and damageTaken > 0 and damageTaken < 30 and not diedDebounce) then
+			diedDebounce = true
+			
+			local deathSound = Assets.Sounds.Death:FindFirstChild(teamName)
+			if (not deathSound) then
+				deathSound = Assets.Sounds.Death.Default
+			end
+			
+			if (character:FindFirstChild("Head")) then
+				talk(chatline.diedText)
+				playSound(randomChildren(deathSound), character.Head):Play()
+			end
+			
+			task.wait(1 / 2)
+			ragdoll:DeathAnimation(character, "normal", respawnTime / 2, humanoid, settings)
+		end
+		
+		lastHealth = health
+	end))
+	
+	table.insert(connections, Events.ai.Event:Connect(function(type, ...)
+		if (not aiActive) then
+			return
+		end
+		
+		if (type == "backup") then
+			local pos, id, team = unpack({...})
+			if (id ~= guid and team == teamValue.Value) then
+				task.wait(math.random(1, 3))
+				if (humanoid.Health > 0) then
+					playSound(randomChildren(Assets.Sounds.radio), humanoid.RootPart):Play()
+					if (not findHumanoid(workspace.Characters) and not backupping) then
+						backupping = true
+						talk(chatline.yesText)
+
+						local backupFailedFlag = 0
+						local stuck = tick()
+						while true do
+							if (findHumanoid(workspace.Characters) or getDistance(humanoid.RootPart, pos) < 10 or backupFailedFlag > 15) then
+								break
+							end
+							local state = path:Run(pos)
+							if (not state) then
+								backupFailedFlag += 1
+							end
+							if (humanoid.RootPart.Velocity.magnitude > 0) then
+								stuck = tick()
+							else
+								if (tick() - stuck > 3) then
+									break
+								end
+							end
+
+							task.wait(globalRate)
+						end
+						backupping = false
+					else
+						if (getDistance(humanoid.RootPart, pos) < 20) then
+							talk(chatline.inPositionText)
+						else
+							talk(chatline.noText)
 						end
 					end
 				end
 			end
-			
-			if (aiming and humanoid:GetAttribute("run") == true) then
-				unaim()
-			end
-			
-			if (tick() - fireDelay < 10 and not IsInFirstPerson() and humanoid.Health > 0 and settings.ragdoll.Value == false) then
-				humanoid.AutoRotate = false
-				if (not gyro) then
-					gyro = Instance.new("BodyGyro")
-					gyro.D = 50
-					gyro.MaxTorque = Vector3.new(4e5, 4e5, 4e5)
-					gyro.Parent = humanoid.RootPart
-				end
-				
-				gyro.CFrame = CFrame.new(humanoid.RootPart.Position, Vector3.new(mouse.UnitRay.Direction.x, 0, mouse.UnitRay.Direction.z) * 1000)
-			elseif (gyro) then
-				gyro:Destroy()
-				gyro = nil
-				if (humanoid.Health > 0) then
-					humanoid.AutoRotate = true
-				end
-			end
-			
-			gunDataFrame.ammo.Text = maxAmmo
-			gunDataFrame.clip.Text = reloading and "--" or clipCurrent
-			gunDataFrame.gunName.Text = tool.Name
-			gunDataFrame.mode.Text = firemodeTable[fireMode]
-			
-			TweenService:Create(gunDataFrame.clip, TweenInfo.new(0.35, Enum.EasingStyle.Quint), {TextColor3 = fired and Color3.fromRGB(143, 143, 143) or Color3.fromRGB(255, 255, 255)}):Play()
-			
-			gunUI.Crosshair.Position = UDim2.new(0, mouse.x, 0, mouse.y)
-		end))
-		
-		UserInputService.MouseIconEnabled = false
-	end)
+		end
+	end))
 	
-	tool.Unequipped:Connect(function()
-		unaim()
-		
-		TweenService:Create(gunDataFrame, TweenInfo.new(1, Enum.EasingStyle.Quint), {Position = UDim2.new(1, 0, 0.883, 0)}):Play()
-		gunUI.Parent = script
-		if (gyro) then
-			gyro:Destroy()
-			gyro = nil
-		end
-		humanoid.AutoRotate = true
-		
-		UserInputService.MouseIconEnabled = true
-		equipped = false
-		altReload = false
-		
-		for _,anim in pairs(anims) do
-			anim:Stop()
-		end
-		
+	table.insert(connections, humanoid.Died:Connect(function()
+		connected = false
 		for _,con in pairs(connections) do
 			con:Disconnect()
 		end
-	end)
-	
-	if (anims.reload) then
-		anims.reload:GetMarkerReachedSignal("magout"):Connect(function()
-			Events.create:Fire("magout", humanoid, tool, gunSettings)
-			Network:FireServer("magout", tool, gunSettings)
+		
+		for _,part in pairs(character:GetDescendants()) do
+			if (part:IsA("BasePart")) then
+				PhysicsService:SetPartCollisionGroup(part, "Death")
+			end
+		end
+		
+		local toolToDrop = character:FindFirstChildWhichIsA("Tool")
+		if (toolToDrop and toolToDrop:GetAttribute("IsGun") == true) then
+			local gunModel = toolToDrop:FindFirstChildWhichIsA("Model")
+			local serverScript = toolToDrop:FindFirstChildWhichIsA("Script")
+			local motor = serverScript and serverScript:FindFirstChildWhichIsA("Motor6D")
+			if (gunModel and serverScript and motor) then
+				local model = Assets.GunModels[toolToDrop.Name]:Clone()
+				model.Parent = workspace.Terrain.Ignore
+
+				for _,part in pairs(model:GetDescendants()) do
+					if (part:IsA("BasePart")) then
+						part.CanCollide = true
+						PhysicsService:SetPartCollisionGroup(part, "NoCollisions")
+					end
+				end
+
+				model.Handle.CFrame = gunModel.Handle.CFrame
+				model.Handle.RotVelocity = (humanoid.RootPart and humanoid.RootPart.Velocity or model.Handle.Velocity) + Vector3.new(0, 30, 0)
+				game.Debris:AddItem(model, 10)
+				
+				motor:Destroy()
+				gunModel:Destroy()
+			end
+		end
+		
+		task.wait(respawnTime)
+		pcall(function()
+			path:Destroy()
 		end)
-	end
+		backpack:Destroy()
+		clone.Parent = workspace.Characters
+		character:Destroy()
+	end))
 end
