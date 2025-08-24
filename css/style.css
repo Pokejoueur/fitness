@@ -1,0 +1,236 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #1a1a1a;
+  color: #fff;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+.container {
+  text-align: center;
+  padding: 20px;
+  max-width: 600px;
+  width: 100%;
+}
+
+h1 {
+  font-size: 2.5em;
+  color: #f1c40f;
+  margin-bottom: 20px;
+}
+
+.workout-selection {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 30px;
+}
+
+.workout-btn, .level-btn, #start-btn, #pause-btn, #next-btn, #back-btn {
+  background-color: #f1c40f;
+  border: none;
+  padding: 10px 20px;
+  font-size: 1.2em;
+  cursor: pointer;
+  border-radius: 5px;
+  transition: background-color 0.3s;
+}
+
+.workout-btn:hover, .level-btn:hover, #start-btn:hover, #pause-btn:hover, #next-btn:hover, #back-btn:hover {
+  background-color: #d4ac0d;
+}
+
+.workout-btn:disabled, .level-btn:disabled, #start-btn:disabled, #pause-btn:disabled, #next-btn:disabled {
+  background-color: #555;
+  cursor: not-allowed;
+}
+
+.workout-area {
+  display: none;
+}
+
+.timer-circle {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin: 20px auto;
+  border: 5px solid #f1c40f;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+#exercise-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.7;
+}
+
+.timer-text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+#timer {
+  font-size: 2em;
+  color: #fff;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+}
+
+#exercise-name {
+  font-size: 1.2em;
+  color: #f1c40f;
+  margin-top: 10px;
+}
+
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+#level-selection {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.level-btn {
+  padding: 8px 16px;
+  font-size: 1em;
+}
+
+@media (max-width: 480px) {
+  h1 {
+    font-size: 2em;
+  }
+
+  .timer-circle {
+    width: 150px;
+    height: 150px;
+  }
+
+  #timer {
+    font-size: 1.5em;
+  }
+
+  #exercise-name {
+    font-size: 1em;
+  }
+
+  .workout-btn, .level-btn, #start-btn, #pause-btn, #next-btn, #back-btn {
+    font-size: 1em;
+    padding: 8px 16px;
+  }
+}  position:absolute; bottom:-40px; font-size:1.8rem; font-weight:bold; color:#ffcc00;
+}
+
+#exerciseText {font-size:1.3rem; margin:10px 0;}
+
+.controls button {
+  margin:8px; padding:12px 20px; border:none; border-radius:10px;
+  font-size:1rem; cursor:pointer; background:#2a2a2a; color:#fff; transition:0.2s;
+}
+.controls button:hover {background:#ffcc00; color:#000;}
+
+#history {
+  margin-top:20px; text-align:left; background:#2a2a2a; padding:10px;
+  border-radius:10px; font-size:0.85rem; max-height:150px; overflow-y:auto;
+  white-space:pre-line;
+}  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+nav button {
+  padding: 15px;
+  background: #2a2a2a;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+nav button:hover {
+  background: #ffcc00;
+  color: #000;
+}
+
+/* Training section */
+#training {
+  margin-top: 20px;
+}
+
+#training h2 {
+  font-size: 1.5rem;
+  margin-bottom: 8px;
+  color: #ffcc00;
+}
+
+#training h3 {
+  font-size: 1.2rem;
+  margin-bottom: 12px;
+  font-weight: 400;
+  color: #ccc;
+}
+
+#exerciseImg {
+  margin: 15px 0;
+  width: 200px;
+  border-radius: 12px;
+  background: #2a2a2a;
+  padding: 10px;
+}
+
+#exerciseText {
+  font-size: 1.3rem;
+  margin: 10px 0;
+  color: #fff;
+}
+
+#timer {
+  font-size: 2rem;
+  font-weight: bold;
+  margin: 15px 0;
+  color: #ffcc00;
+}
+
+#training button {
+  margin: 8px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  background: #2a2a2a;
+  color: #fff;
+  transition: 0.2s;
+}
+
+#training button:hover {
+  background: #ffcc00;
+  color: #000;
+}
+
+#history {
+  margin-top: 20px;
+  text-align: left;
+  background: #2a2a2a;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-line;
+}
