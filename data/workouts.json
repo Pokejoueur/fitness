@@ -1,0 +1,101 @@
+{
+  "handstand": {
+    "name": "Handstand Training",
+    "levels": [
+      {
+        "exercises": [
+          {
+            "name": "Wall Handstand",
+            "duration": 30,
+            "image": "assets/images/handstand_wall.jpg"
+          },
+          {
+            "name": "Plank",
+            "duration": 20,
+            "image": "assets/images/plank.jpg"
+          }
+        ]
+      },
+      {
+        "exercises": [
+          {
+            "name": "Wall Taps",
+            "duration": 40,
+            "image": "assets/images/wall_taps.jpg"
+          },
+          {
+            "name": "Shoulder Taps",
+            "duration": 30,
+            "image": "assets/images/shoulder_taps.jpg"
+          }
+        ]
+      }
+    ]
+  },
+  "abs": {
+    "name": "Abs Program",
+    "levels": [
+      {
+        "exercises": [
+          {
+            "name": "Crunches",
+            "duration": 30,
+            "image": "assets/images/crunches.jpg"
+          },
+          {
+            "name": "Plank",
+            "duration": 20,
+            "image": "assets/images/plank.jpg"
+          }
+        ]
+      },
+      {
+        "exercises": [
+          {
+            "name": "Hollow Hold",
+            "duration": 40,
+            "image": "assets/images/hollow_hold.jpg"
+          },
+          {
+            "name": "Leg Raises",
+            "duration": 30,
+            "image": "assets/images/leg_raises.jpg"
+          }
+        ]
+      }
+    ]
+  },
+  "arms": {
+    "name": "Arms Program",
+    "levels": [
+      {
+        "exercises": [
+          {
+            "name": "Push-Ups",
+            "duration": 30,
+            "image": "assets/images/push_ups.jpg"
+          },
+          {
+            "name": "Tricep Dips",
+            "duration": 20,
+            "image": "assets/images/tricep_dips.jpg"
+          }
+        ]
+      },
+      {
+        "exercises": [
+          {
+            "name": "Diamond Push-Ups",
+            "duration": 40,
+            "image": "assets/images/diamond_push_ups.jpg"
+          },
+          {
+            "name": "Plank to Push-Up",
+            "duration": 30,
+            "image": "assets/images/plank_to_pushup.jpg"
+          }
+        ]
+      }
+    ]
+  }
+}
