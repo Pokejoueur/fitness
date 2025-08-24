@@ -1,42 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Handstand 30 - Progressive Trainer</title>
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calisthenics Training</title>
+  <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <main id="app">
-    <!-- Home -->
-    <section id="home">
-      <h1>🤸 Handstand 30</h1>
-      <p class="tagline">Train 30 minutes a day. Progress step by step.</p>
-      <nav>
-        <button onclick="startProgram('handstand')">Handstand Program</button>
-        <button onclick="startProgram('arms')">Full Arms Program</button>
-        <button onclick="startProgram('abs')">Full Abs Program</button>
-      </nav>
-    </section>
-
-    <!-- Training -->
-    <section id="training" class="hidden">
-      <h2 id="programName"></h2>
-      <h3 id="levelName"></h3>
-      <div id="timerCircle">
-        <img id="exerciseImg" src="" alt="exercise"/>
-        <div id="timer">30:00</div>
+  <div class="container">
+    <h1>Calisthenics Training</h1>
+    <div class="workout-selection">
+      <button class="workout-btn" data-type="handstand">Handstand</button>
+      <button class="workout-btn" data-type="abs">Abs</button>
+      <button class="workout-btn" data-type="arms">Arms</button>
+    </div>
+    <div class="workout-area" style="display: none;">
+      <h2 id="workout-title"></h2>
+      <div id="level-selection"></div>
+      <div class="exercise-container">
+        <div class="timer-circle">
+          <img id="exercise-image" src="" alt="Exercise Image">
+          <div class="timer-text">
+            <span id="timer">00:00</span>
+            <p id="exercise-name"></p>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="start-btn">Start</button>
+          <button id="pause-btn" disabled>Pause</button>
+          <button id="next-btn" disabled>Next</button>
+        </div>
       </div>
-      <div id="exerciseText"></div>
-      <div class="controls">
-        <button onclick="toggleTimer()">▶/⏸</button>
-        <button onclick="nextExercise()">⏭ Next</button>
-        <button onclick="endWorkout()">🏠 Quit</button>
-      </div>
-      <div id="history"></div>
-    </section>
-  </main>
-
-  <script src="script.js"></script>
+      <button id="back-btn">Back to Workouts</button>
+    </div>
+  </div>
+  <script src="js/app.js"></script>
 </body>
 </html>
