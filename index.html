@@ -3,35 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mini Fitness App</title>
+  <title>Workout Trainer</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Mini Fitness App</h1>
-  </header>
-
   <main id="app">
-    <section id="login-section">
-      <input type="text" id="username" placeholder="Your name">
-      <button id="login-btn">Login</button>
-    </section>
+    <h1>🔥 Progressive Workout Trainer</h1>
+    <nav>
+      <button onclick="startPath('handstand')">🤸 Handstand 30</button>
+      <button onclick="startPath('arms')">💪 Arms Mastery</button>
+      <button onclick="startPath('abs')">🧩 Abs Core</button>
+    </nav>
 
-    <section id="dashboard-section" class="hidden">
-      <h2>Welcome, <span id="user-name"></span></h2>
-      <button id="start-workout">Start Workout</button>
-      <button id="view-programs">Programs</button>
-      <button id="skill-logs-btn">Skill Logs</button>
-    </section>
-
-    <section id="workout-section" class="hidden">
-      <h2>Workout</h2>
-      <div id="exercise-container"></div>
-      <button id="next-exercise">Next</button>
-      <button id="end-workout">End Workout</button>
+    <section id="training" style="display:none;">
+      <h2 id="pathTitle"></h2>
+      <h3 id="levelTitle"></h3>
+      <img id="exerciseImg" src="" alt="exercise" style="max-width:200px;">
+      <p id="exerciseText"></p>
+      <div id="timer"></div>
+      <button id="start">Start</button>
+      <button id="pause">Pause</button>
+      <button id="next">Next</button>
+      <pre id="history"></pre>
     </section>
   </main>
-
-  <script src="app.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
