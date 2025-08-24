@@ -1,40 +1,134 @@
-// Training definitions
-const paths = {
-  handstand: [
-    {
-      name: "Level 1 — Wall Prep",
-      blocks: [
-        { name: "Warm-up", time: 180, img: "exercises/stretch.png" },
-        { name: "Wall Hold", time: 300, img: "exercises/handstand-wall.png" },
-        { name: "Pike Push-ups", time: 300, img: "exercises/pike-pushup.png" },
-        { name: "Core Hollow Hold", time: 300, img: "exercises/hollow.png" },
-        { name: "Cooldown", time: 180, img: "exercises/stretch.png" }
-      ]
-    },
-    // Level 2, 3, 4, 5...
-  ],
-  arms: [
-    {
-      name: "Level 1 — Basics",
-      blocks: [
-        { name: "Push-ups", time: 120, img: "exercises/pushup.png" },
-        { name: "Diamond Push-ups", time: 120, img: "exercises/diamond.png" },
-        { name: "Chair Dips", time: 120, img: "exercises/dip.png" },
-        { name: "Rest & Stretch", time: 120, img: "exercises/stretch.png" }
-      ]
-    },
-    // Higher levels: archer pushups, pseudo planche pushups, handstand pushups...
-  ],
-  abs: [
-    {
-      name: "Level 1 — Core Start",
-      blocks: [
-        { name: "Plank", time: 60, img: "exercises/plank.png" },
-        { name: "Leg Raises", time: 60, img: "exercises/legraise.png" },
-        { name: "Hollow Hold", time: 60, img: "exercises/hollow.png" },
-        { name: "Rest", time: 60, img: "exercises/stretch.png" }
-      ]
-    },
+// Simple program definitions
+const programs = {
+  handstand: {
+    name: "Handstand 30",
+    levels: [
+      {name: "Level 1: Prep", exercises:[
+        {name:"Wrist Warmup", img:"img/wrist.svg", time:60},
+        {name:"Plank Hold", img:"img/plank.svg", time:60},
+        {name:"Wall Walk", img:"img/wallwalk.svg", time:60},
+      ]},
+      {name: "Level 2: Balance", exercises:[
+        {name:"Crow Pose", img:"img/crow.svg", time:60},
+        {name:"Wall Taps", img:"img/walltap.svg", time:60},
+      ]}
+    ]
+  },
+  arms: {
+    name:"Full Arms Program",
+    levels: [
+      {name:"Level 1: Basics", exercises:[
+        {name:"Push-ups", img:"img/pushup.svg", time:60},
+        {name:"Diamond Push-ups", img:"img/diamond.svg", time:60},
+      ]}
+    ]
+  },
+  abs: {
+    name:"Full Abs Program",
+    levels: [
+      {name:"Level 1: Core", exercises:[
+        {name:"Crunches", img:"img/crunch.svg", time:60},
+        {name:"Hollow Hold", img:"img/hollow.svg", time:60},
+      ]}
+    ]
+  }
+};
+
+let currentProgram = null;
+let currentLevel = 0;
+let currentExercise = 0;
+let timerInterval = null;
+let timeLeft = 0;
+let running = false;
+
+// Load history
+let history = JSON.parse(localStorage.getItem("history") || "[]");
+renderHistory();
+
+function startProgram(key){
+  currentProgram = programs[key];
+  currentLevel = 0;
+  currentExercise = 0;
+  document.getElementById("home").classList.add("hidden");
+  document.getElementById("training").classList.remove("hidden");
+  loadExercise();
+}
+
+function loadExercise(){
+  const lvl = currentProgram.levels[currentLevel];
+  const ex = lvl.exercises[currentExercise];
+  document.getElementById("programName").innerText = currentProgram.name;
+  document.getElementById("levelName").innerText = lvl.name;
+  document.getElementById("exerciseText").innerText = ex.name;
+  document.getElementById("exerciseImg").src = ex.img;
+  timeLeft = ex.time;
+  updateTimer();
+}
+
+function toggleTimer(){
+  if(running){ pauseTimer(); }
+  else { startTimer(); }
+}
+
+function startTimer(){
+  if(timerInterval) clearInterval(timerInterval);
+  running = true;
+  timerInterval = setInterval(()=>{
+    if(timeLeft>0){
+      timeLeft--;
+      updateTimer();
+    } else {
+      nextExercise();
+    }
+  },1000);
+}
+
+function pauseTimer(){
+  running=false;
+  clearInterval(timerInterval);
+}
+
+function updateTimer(){
+  document.getElementById("timer").innerText = formatTime(timeLeft);
+}
+
+function formatTime(s){
+  const m = Math.floor(s/60), sec = s%60;
+  return `${m}:${sec.toString().padStart(2,"0")}`;
+}
+
+function nextExercise(){
+  const lvl = currentProgram.levels[currentLevel];
+  currentExercise++;
+  if(currentExercise>=lvl.exercises.length){
+    finishLevel();
+  } else {
+    loadExercise();
+  }
+}
+
+function finishLevel(){
+  history.push({date:new Date().toLocaleString(), program:currentProgram.name, level:currentProgram.levels[currentLevel].name});
+  localStorage.setItem("history", JSON.stringify(history));
+  renderHistory();
+  currentExercise=0;
+  currentLevel++;
+  if(currentLevel>=currentProgram.levels.length){
+    endWorkout();
+  } else {
+    loadExercise();
+  }
+}
+
+function endWorkout(){
+  pauseTimer();
+  document.getElementById("home").classList.remove("hidden");
+  document.getElementById("training").classList.add("hidden");
+}
+
+function renderHistory(){
+  document.getElementById("history").innerText = history.map(h=>`${h.date} - ${h.program} (${h.level})`).join("\n");
+}    },
     // Higher levels: L-sit, dragon flag, hanging leg raise...
   ]
 };
