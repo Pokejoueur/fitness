@@ -1,40 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Calisthenics Training</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Personal Coach — Run • Breath • Social</title>
+  <meta name="description" content="Your private dashboard for running plans, breathing exercises, and social confidence challenges." />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#111827" />
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background-color: #1a1a1a;
-      color: #fff;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-    }
+    .ring { transition: stroke-dashoffset .3s ease; }
+    .fade-enter { opacity: 0; transform: translateY(6px); }
+    .fade-enter-active { opacity: 1; transform: translateY(0); transition: all .25s ease; }
+  </style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+  <header class="sticky top-0 z-40 backdrop-blur bg-black/40 border-b border-white/10">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <h1 class="text-lg md:text-xl font-semibold">🏁 Personal Coach</h1>
+      <nav class="flex gap-2 text-sm">
+        <a href="#/dashboard" class="navlink px-3 py-1.5 rounded-xl hover:bg-white/10">Dashboard</a>
+        <a href="#/run" class="navlink px-3 py-1.5 rounded-xl hover:bg-white/10">Run</a>
+        <a href="#/breath" class="navlink px-3 py-1.5 rounded-xl hover:bg-white/10">Breath</a>
+        <a href="#/social" class="navlink px-3 py-1.5 rounded-xl hover:bg-white/10">Social</a>
+        <a href="#/settings" class="navlink px-3 py-1.5 rounded-xl hover:bg-white/10">Settings</a>
+      </nav>
+    </div>
+  </header>
 
-    .container {
-      text-align: center;
-      padding: 20px;
-      max-width: 600px;
-      width: 100%;
-    }
+  <main id="app" class="max-w-5xl mx-auto px-4 py-6"></main>
 
-    h1 {
-      font-size: 2.5em;
-      color: #f1c40f;
-      margin-bottom: 20px;
-    }
+  <footer class="max-w-5xl mx-auto px-4 pb-12 pt-4 text-xs text-gray-400">
+    <div class="flex flex-wrap gap-3 items-center">
+      <button id="exportBtn" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20">Export Data</button>
+      <label class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 cursor-pointer">Import Data
+        <input id="importInput" type="file" accept="application/json" class="hidden" />
+      </label>
+      <span class="ml-auto">Offline ready • Private (localStorage)</span>
+    </div>
+  </footer>
 
-    .workout-selection {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      margin-bottom: 30px;
-    }
+  <script src="/app.js"></script>
+</body>
+</html>    }
 
     .workout-btn, .level-btn, #start-btn, #pause-btn, #next-btn, #back-btn {
       background-color: #f1c40f;
