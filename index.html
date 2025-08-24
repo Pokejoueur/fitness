@@ -1,32 +1,42 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Workout Trainer</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Handstand 30 - Progressive Trainer</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <main id="app">
-    <h1>🔥 Progressive Workout Trainer</h1>
-    <nav>
-      <button onclick="startPath('handstand')">🤸 Handstand 30</button>
-      <button onclick="startPath('arms')">💪 Arms Mastery</button>
-      <button onclick="startPath('abs')">🧩 Abs Core</button>
-    </nav>
+    <!-- Home -->
+    <section id="home">
+      <h1>🤸 Handstand 30</h1>
+      <p class="tagline">Train 30 minutes a day. Progress step by step.</p>
+      <nav>
+        <button onclick="startProgram('handstand')">Handstand Program</button>
+        <button onclick="startProgram('arms')">Full Arms Program</button>
+        <button onclick="startProgram('abs')">Full Abs Program</button>
+      </nav>
+    </section>
 
-    <section id="training" style="display:none;">
-      <h2 id="pathTitle"></h2>
-      <h3 id="levelTitle"></h3>
-      <img id="exerciseImg" src="" alt="exercise" style="max-width:200px;">
-      <p id="exerciseText"></p>
-      <div id="timer"></div>
-      <button id="start">Start</button>
-      <button id="pause">Pause</button>
-      <button id="next">Next</button>
-      <pre id="history"></pre>
+    <!-- Training -->
+    <section id="training" class="hidden">
+      <h2 id="programName"></h2>
+      <h3 id="levelName"></h3>
+      <div id="timerCircle">
+        <img id="exerciseImg" src="" alt="exercise"/>
+        <div id="timer">30:00</div>
+      </div>
+      <div id="exerciseText"></div>
+      <div class="controls">
+        <button onclick="toggleTimer()">▶/⏸</button>
+        <button onclick="nextExercise()">⏭ Next</button>
+        <button onclick="endWorkout()">🏠 Quit</button>
+      </div>
+      <div id="history"></div>
     </section>
   </main>
+
   <script src="script.js"></script>
 </body>
 </html>
